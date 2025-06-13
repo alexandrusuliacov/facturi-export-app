@@ -11,7 +11,7 @@ reader = easyocr.Reader(['ro'], gpu=False)
 
 # UI Streamlit
 st.set_page_config(page_title="Extractor Facturi", layout="centered")
-st.title("📄 Extractor de date din facturi (PDF / imagine)")
+st.title("📄 Extractor de date din facturi (doar imagine deocamdată)")
 
 uploaded_file = st.file_uploader("Încarcă factura (doar imagine deocamdată)", type=["png", "jpg", "jpeg"])
 
@@ -22,7 +22,7 @@ if uploaded_file:
     text_extras = "\n".join(text_extras)
 
     st.success("✅ Text extras din imagine:")
-    st.text_area("📑 Conținut detectat:", text_extras, height=250)
+    st.text_area("🧾 Conținut detectat:", text_extras, height=250)
 
     # Extragem date simple
     numar = re.search(r"nr\.?\s*(\S+)", text_extras, re.IGNORECASE)
@@ -67,8 +67,6 @@ if uploaded_file:
     # Export Excel + XML
     os.makedirs("facturi-export", exist_ok=True)
     excel_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xlsx")
-    xml_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xml")
-
     with pd.ExcelWriter(excel_path) as writer:
         pd.DataFrame([date_factura]).to_excel(writer, sheet_name="Date Factura", index=False)
         if produse:
@@ -85,11 +83,10 @@ if uploaded_file:
             for k, v in prod.items():
                 ET.SubElement(p_elem, k.replace(" ", "_")).text = v
 
+    xml_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xml")
     tree = ET.ElementTree(root)
     tree.write(xml_path, encoding="utf-8", xml_declaration=True)
 
     st.success("📤 Export realizat în folderul facturi-export!")
-    with open(excel_path, "rb") as f:
-        st.download_button("⬇️ Descarcă Excel", f, file_name=os.path.basename(excel_path), mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with open(xml_path, "rb") as f:
-        st.download_button("⬇️ Descarcă XML", f, file_name=os.path.basename(xml_path), mime="application/xml")
+    st.code(f"Excel: {excel_path}\nXML: {xml_path}", language="text")
+
