@@ -1,25 +1,32 @@
 import streamlit as st
-import easyocr
+import pytesseract
 from PIL import Image
+import pdfplumber
 import os
 import re
 import pandas as pd
 import xml.etree.ElementTree as ET
 
+# OCR path local (folosit doar local, ignorat pe web)
+pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+
 # UI Streamlit
 st.set_page_config(page_title="Extractor Facturi", layout="centered")
-st.title("📄 Extractor de date din facturi (DOAR imagini momentan)")
+st.title("📄 Extractor de date din facturi (PDF / imagine)")
 
-uploaded_file = st.file_uploader("Încarcă factura (DOAR imagine)", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Încarcă factura (PDF sau imagine)", type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded_file:
-    st.info("📥 Procesez imaginea...")
-    image = Image.open(uploaded_file)
+    st.info("📥 Procesez fișierul...")
+    text_extras = ""
 
-    # OCR cu EasyOCR
-    reader = easyocr.Reader(['ro', 'en'])
-    raw_text = reader.readtext(image, detail=0, paragraph=True)
-    text_extras = "\n".join(raw_text)
+    if uploaded_file.type == "application/pdf":
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                text_extras += page.extract_text() + "\n"
+    else:
+        image = Image.open(uploaded_file)
+        text_extras = pytesseract.image_to_string(image, lang="ron")
 
     st.success("✅ Text extras din document:")
     st.text_area("📑 Conținut detectat:", text_extras, height=250)
@@ -89,3 +96,10 @@ if uploaded_file:
 
     st.success("📤 Export realizat în folderul facturi-export!")
     st.code(f"Excel: {excel_path}\nXML: {xml_path}", language="text")
+
+    # Butoane de descărcare
+    with open(excel_path, "rb") as f:
+        st.download_button("⬇️ Descarcă Excel", f, file_name=os.path.basename(excel_path), mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    with open(xml_path, "rb") as f:
+        st.download_button("⬇️ Descarcă XML", f, file_name=os.path.basename(xml_path), mime="application/xml")
