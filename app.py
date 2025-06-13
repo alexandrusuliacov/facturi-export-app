@@ -12,6 +12,7 @@ def load_reader():
     return easyocr.Reader(['ro'], gpu=False)
 
 reader = load_reader()
+reader = load_reader()
 
 # UI Streamlit
 st.set_page_config(page_title="Extractor Facturi", layout="centered")
