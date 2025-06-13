@@ -1,4 +1,5 @@
 streamlit
-pytesseract
+easyocr
 Pillow
 pandas
+opencv-python-headless

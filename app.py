@@ -1,31 +1,35 @@
 import streamlit as st
-import pytesseract
+import easyocr
 from PIL import Image
 import os
 import re
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-# Interfață aplicație
-st.set_page_config(page_title="Extractor Facturi Imagini", layout="centered")
-st.title("🖼️ Extractor facturi din imagini (JPG / PNG)")
+# UI Streamlit
+st.set_page_config(page_title="Extractor Facturi", layout="centered")
+st.title("📄 Extractor de date din facturi (DOAR imagini momentan)")
 
-uploaded_file = st.file_uploader("Încarcă o imagine cu factura (PNG, JPG)", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Încarcă factura (DOAR imagine)", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
     st.info("📥 Procesez imaginea...")
     image = Image.open(uploaded_file)
-    text = pytesseract.image_to_string(image, lang="ron")
 
-    st.success("✅ Text extras din imagine:")
-    st.text_area("📑 Conținut detectat:", text, height=250)
+    # OCR cu EasyOCR
+    reader = easyocr.Reader(['ro', 'en'])
+    raw_text = reader.readtext(image, detail=0, paragraph=True)
+    text_extras = "\n".join(raw_text)
+
+    st.success("✅ Text extras din document:")
+    st.text_area("📑 Conținut detectat:", text_extras, height=250)
 
     # Extragem date simple
-    numar = re.search(r"nr\.?\s*(\S+)", text, re.IGNORECASE)
-    cui = re.search(r"C\.I\.F\.?\s*(RO?\d+)", text, re.IGNORECASE)
-    total = re.search(r"(\d+[\.,]\d{2})\s*RON", text)
-    furnizor = re.search(r"Furnizor\:?\s*(.*?)\s*(?:/|\\n)", text)
-    data = re.search(r"(\d{2}\.\d{2}\.\d{4})", text)
+    numar = re.search(r"nr\.?\s*(\S+)", text_extras, re.IGNORECASE)
+    cui = re.search(r"C\.I\.F\.?\s*(RO?\d+)", text_extras, re.IGNORECASE)
+    total = re.search(r"(\d+[\.,]\d{2})\s*RON", text_extras)
+    furnizor = re.search(r"Furnizor\:?\s*(.*?)\s*(?:/|\\n)", text_extras)
+    data = re.search(r"(\d{2}\.\d{2}\.\d{4})", text_extras)
 
     date_factura = {
         "Număr Factură": numar.group(1) if numar else "-",
@@ -38,9 +42,9 @@ if uploaded_file:
     st.subheader("📋 Date extrase:")
     st.write(date_factura)
 
-    # Extragem produse
+    # Extragem produse (format: Denumire x Cantitate x Preț)
     produse = []
-    linii = text.split('\n')
+    linii = text_extras.split('\n')
     for linie in linii:
         linie = linie.strip()
         match = re.search(r"(.+?)\s+(\d+)\s+x\s+(\d+[\.,]\d{2})", linie)
@@ -60,7 +64,7 @@ if uploaded_file:
         st.subheader("📦 Produse detectate:")
         st.write(produse)
 
-    # Export
+    # Export Excel + XML
     os.makedirs("facturi-export", exist_ok=True)
     excel_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
