@@ -1,34 +1,27 @@
 import streamlit as st
-import pytesseract
+import easyocr
 from PIL import Image
-import pdfplumber
 import os
 import re
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-# OCR path local (folosit doar local, ignorat pe web)
-pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+# OCR cu EasyOCR compatibil Streamlit Cloud
+reader = easyocr.Reader(['ro'], gpu=False)
 
 # UI Streamlit
 st.set_page_config(page_title="Extractor Facturi", layout="centered")
 st.title("📄 Extractor de date din facturi (PDF / imagine)")
 
-uploaded_file = st.file_uploader("Încarcă factura (PDF sau imagine)", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Încarcă factura (doar imagine deocamdată)", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
-    st.info("📥 Procesez fișierul...")
-    text_extras = ""
+    st.info("📥 Procesez imaginea...")
+    image = Image.open(uploaded_file)
+    text_extras = reader.readtext(image, detail=0, paragraph=True)
+    text_extras = "\n".join(text_extras)
 
-    if uploaded_file.type == "application/pdf":
-        with pdfplumber.open(uploaded_file) as pdf:
-            for page in pdf.pages:
-                text_extras += page.extract_text() + "\n"
-    else:
-        image = Image.open(uploaded_file)
-        text_extras = pytesseract.image_to_string(image, lang="ron")
-
-    st.success("✅ Text extras din document:")
+    st.success("✅ Text extras din imagine:")
     st.text_area("📑 Conținut detectat:", text_extras, height=250)
 
     # Extragem date simple
@@ -74,6 +67,8 @@ if uploaded_file:
     # Export Excel + XML
     os.makedirs("facturi-export", exist_ok=True)
     excel_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xlsx")
+    xml_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xml")
+
     with pd.ExcelWriter(excel_path) as writer:
         pd.DataFrame([date_factura]).to_excel(writer, sheet_name="Date Factura", index=False)
         if produse:
@@ -90,16 +85,11 @@ if uploaded_file:
             for k, v in prod.items():
                 ET.SubElement(p_elem, k.replace(" ", "_")).text = v
 
-    xml_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xml")
     tree = ET.ElementTree(root)
     tree.write(xml_path, encoding="utf-8", xml_declaration=True)
 
     st.success("📤 Export realizat în folderul facturi-export!")
-    st.code(f"Excel: {excel_path}\nXML: {xml_path}", language="text")
-
-    # Butoane de descărcare
     with open(excel_path, "rb") as f:
         st.download_button("⬇️ Descarcă Excel", f, file_name=os.path.basename(excel_path), mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
     with open(xml_path, "rb") as f:
         st.download_button("⬇️ Descarcă XML", f, file_name=os.path.basename(xml_path), mime="application/xml")
