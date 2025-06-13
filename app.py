@@ -6,23 +6,30 @@ import re
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-# OCR cu EasyOCR compatibil Streamlit Cloud
-reader = easyocr.Reader(['ro'], gpu=False)
+# OCR compatibil cu Streamlit Cloud
+@st.cache_resource
+def load_reader():
+    return easyocr.Reader(['ro'], gpu=False)
+
+reader = load_reader()
 
 # UI Streamlit
 st.set_page_config(page_title="Extractor Facturi", layout="centered")
-st.title("📄 Extractor de date din facturi (doar imagine deocamdată)")
+st.title("📄 Extractor de date din facturi (PDF / imagine)")
 
 uploaded_file = st.file_uploader("Încarcă factura (doar imagine deocamdată)", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
     st.info("📥 Procesez imaginea...")
     image = Image.open(uploaded_file)
-    text_extras = reader.readtext(image, detail=0, paragraph=True)
-    text_extras = "\n".join(text_extras)
+    image = image.convert("RGB")
+
+    # OCR EasyOCR
+    result = reader.readtext(image, detail=0, paragraph=True)
+    text_extras = "\n".join(result)
 
     st.success("✅ Text extras din imagine:")
-    st.text_area("🧾 Conținut detectat:", text_extras, height=250)
+    st.text_area("📑 Conținut detectat:", text_extras, height=250)
 
     # Extragem date simple
     numar = re.search(r"nr\.?\s*(\S+)", text_extras, re.IGNORECASE)
@@ -42,10 +49,9 @@ if uploaded_file:
     st.subheader("📋 Date extrase:")
     st.write(date_factura)
 
-    # Extragem produse (format: Denumire x Cantitate x Preț)
+    # Extragem produse
     produse = []
-    linii = text_extras.split('\n')
-    for linie in linii:
+    for linie in text_extras.split('\n'):
         linie = linie.strip()
         match = re.search(r"(.+?)\s+(\d+)\s+x\s+(\d+[\.,]\d{2})", linie)
         if match:
@@ -64,13 +70,14 @@ if uploaded_file:
         st.subheader("📦 Produse detectate:")
         st.write(produse)
 
-    # Export Excel + XML
-    os.makedirs("facturi-export", exist_ok=True)
-    excel_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xlsx")
-    with pd.ExcelWriter(excel_path) as writer:
+    # Export Excel + XML în memorie
+    from io import BytesIO
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
         pd.DataFrame([date_factura]).to_excel(writer, sheet_name="Date Factura", index=False)
         if produse:
             pd.DataFrame(produse).to_excel(writer, sheet_name="Produse", index=False)
+    excel_data = excel_buffer.getvalue()
 
     root = ET.Element("Factura")
     for k, v in date_factura.items():
@@ -83,10 +90,12 @@ if uploaded_file:
             for k, v in prod.items():
                 ET.SubElement(p_elem, k.replace(" ", "_")).text = v
 
-    xml_path = os.path.join("facturi-export", f"{date_factura['Număr Factură']}.xml")
+    xml_buffer = BytesIO()
     tree = ET.ElementTree(root)
-    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+    tree.write(xml_buffer, encoding="utf-8", xml_declaration=True)
+    xml_data = xml_buffer.getvalue()
 
-    st.success("📤 Export realizat în folderul facturi-export!")
-    st.code(f"Excel: {excel_path}\nXML: {xml_path}", language="text")
-
+    # Butoane de descărcare
+    st.success("📤 Export completat. Descarcă mai jos:")
+    st.download_button("⬇️ Descarcă Excel", data=excel_data, file_name=f"{date_factura['Număr Factură']}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.download_button("⬇️ Descarcă XML", data=xml_data, file_name=f"{date_factura['Număr Factură']}.xml", mime="application/xml")
